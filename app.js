@@ -3,8 +3,8 @@
 // ===================================================
 
 // --- SOCKET.IO SETUP ---
-// Connects to the Node.js server running on port 3000
-const socket = io('http://localhost:3000');
+// Connects to the publicly hosted Node.js server on Render.
+const socket = io('https://tic-tac-toe-10me.onrender.com');
 
 let userProfile = null;
 let currentRoom = null;
@@ -70,12 +70,10 @@ function renderBoard(el, moveHandler) {
         cell.className = 'cell ' + cellValue.toLowerCase();
         cell.textContent = cellValue;
         cell.dataset.index = index;
-        // Only allow clicks if it's the player's turn (handled in moveHandler)
         cell.onclick = () => moveHandler(index); 
         el.appendChild(cell);
     });
     const undoButton = isMultiplayer ? undoBtn : document.getElementById('ai-undo-btn');
-    // MP undo is disabled until implemented server-side
     undoButton.disabled = isMultiplayer || moveHistory.length < 2 || isGameOver;
 }
 
@@ -139,6 +137,10 @@ function handleJoinRoom(code) {
 function handleLeaveRoom() {
     if (!currentRoom) return;
     socket.emit('leaveRoom', { roomCode: currentRoom.code });
+    switchToView('lobby-view');
+    currentRoom = null;
+    isMultiplayer = false;
+    socket.emit('requestActiveRooms'); 
 }
 
 socket.on('roomReady', (room) => {
@@ -149,7 +151,6 @@ socket.on('roomReady', (room) => {
     board = Array(BOARD_SIZE * BOARD_SIZE).fill('');
     moveHistory = [];
     
-    // Determine our symbol
     const myPlayer = room.players.find(p => p.name === userProfile.name);
     mySymbol = myPlayer ? myPlayer.symbol : null;
     
@@ -178,10 +179,9 @@ socket.on('gameOver', (data) => {
 
 socket.on('opponentLeft', (message) => {
     alert(message);
-    handleLeaveRoom(); // Force local client back to lobby
+    handleLeaveRoom();
 });
 
-// After leaving, server sends signal to refresh lobby
 socket.on('updateActiveRooms', updateActiveRoomsList); 
 
 socket.on('joinFailed', (message) => {
@@ -205,7 +205,7 @@ function updatePlayerStatus(players) {
 
     document.getElementById('player-status-x').textContent = `X: ${playerX ? playerX.name : 'Waiting...'}`;
     document.getElementById('player-status-o').textContent = `O: ${playerO ? playerO.name : 'Waiting...'}`;
-    updatePlayerTurn(currentPlayer); // Initialize active player indicator
+    updatePlayerTurn(currentPlayer);
 }
 
 function updatePlayerTurn(player) {
@@ -259,12 +259,10 @@ socket.on('userTyping', (data) => {
     const indicatorEl = document.getElementById(indicatorId);
     
     if (data.isTyping !== false) {
-         // Simple implementation: show sender's name
         indicatorEl.textContent = `${data.user} is typing...`;
     } else {
         indicatorEl.textContent = '';
     }
-     // Clear the indicator after a short delay if no new typing event comes in
     setTimeout(() => { indicatorEl.textContent = ''; }, TYPING_DELAY + 500); 
 });
 
@@ -301,7 +299,6 @@ function makeMove(index, player, el) {
         } else if (currentBoard.every(cell => cell !== '')) {
             endGame('It\'s a Draw!', [], el, currentStatusEl);
         } else if (!isMultiplayer) {
-            // Only update currentPlayer for AI mode here
             currentPlayer = (player === PLAYER_X) ? PLAYER_O : PLAYER_X;
             currentStatusEl.textContent = `Player ${currentPlayer}'s turn.`;
         }
@@ -312,7 +309,6 @@ function endGame(message, winningLine = [], el, currentStatusEl) {
     isGameOver = true;
     currentStatusEl.textContent = message;
     
-    // Disable interaction
     el.style.pointerEvents = 'none';
 
     winningLine.forEach(index => {
@@ -325,48 +321,30 @@ function endGame(message, winningLine = [], el, currentStatusEl) {
 function checkWin(currentBoard, player, size) {
     // 1. Check Rows
     for (let r = 0; r < size; r++) {
-        let count = 0;
-        let line = [];
+        let count = 0; let line = [];
         for (let c = 0; c < size; c++) {
-            const index = r * size + c;
-            line.push(index);
-            if (currentBoard[index] === player) {
-                count++;
-            } else {
-                count = 0;
-                line = [];
-            }
+            const index = r * size + c; line.push(index);
+            if (currentBoard[index] === player) { count++; } else { count = 0; line = []; }
             if (count === size) return { winningLine: line.slice(c - size + 1) };
         }
     }
     // 2. Check Columns
     for (let c = 0; c < size; c++) {
-        let count = 0;
-        let line = [];
+        let count = 0; let line = [];
         for (let r = 0; r < size; r++) {
-            const index = r * size + c;
-            line.push(index);
-            if (currentBoard[index] === player) {
-                count++;
-            } else {
-                count = 0;
-                line = [];
-            }
+            const index = r * size + c; line.push(index);
+            if (currentBoard[index] === player) { count++; } else { count = 0; line = []; }
             if (count === size) return { winningLine: line.slice(r - size + 1) };
         }
     }
     // 3. Check Diagonals (Main and Anti)
-    let diag1Count = 0;
-    let diag1Line = [];
-    let diag2Count = 0;
-    let diag2Line = [];
+    let diag1Count = 0; let diag1Line = [];
+    let diag2Count = 0; let diag2Line = [];
     for (let i = 0; i < size; i++) {
-        const index1 = i * size + i; 
-        diag1Line.push(index1);
+        const index1 = i * size + i; diag1Line.push(index1);
         if (currentBoard[index1] === player) diag1Count++; else { diag1Count = 0; diag1Line = []; }
 
-        const index2 = i * size + (size - 1 - i); 
-        diag2Line.push(index2);
+        const index2 = i * size + (size - 1 - i); diag2Line.push(index2);
         if (currentBoard[index2] === player) diag2Count++; else { diag2Count = 0; diag2Line = []; }
     }
     if (diag1Count === size && diag1Line.length === size) return { winningLine: diag1Line };
@@ -430,7 +408,6 @@ class Node {
 
             const winInfo = checkWin(tempBoard, player === PLAYER_X ? PLAYER_O : PLAYER_X, currentSize);
             if (winInfo) {
-                // Return 1 if AI (O) wins, 0 if Player (X) wins
                 return player === PLAYER_X ? 1 : 0; 
             }
 
@@ -537,7 +514,6 @@ async function makeAIMove() {
 }
 
 document.getElementById('ai-undo-btn').onclick = () => {
-     // AI mode undo logic
     if (moveHistory.length >= 2 && !isGameOver) {
         const lastAIIndex = moveHistory.pop();
         window.aiBoard[lastAIIndex] = '';
@@ -552,7 +528,6 @@ document.getElementById('ai-undo-btn').onclick = () => {
 };
 
 document.getElementById('ai-hint-btn').onclick = () => {
-     // AI mode hint logic
     if (currentPlayer === PLAYER_X && !isGameOver) {
         document.getElementById('ai-status').textContent = "Calculating hint...";
         const hintRollouts = Math.min(window.AI_DIFFICULTY / 2, 500);
