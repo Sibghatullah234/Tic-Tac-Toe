@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced MCTS Tic Tac Toe - Multiplayer</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script> 
+    <style>
+        /* [COMPLETE CSS STYLING HERE] */
+        :root {
+            --color-bg: #1a1a2e; /* Dark Blue Background */
+            --color-text: #e0f7fa;
+            --color-primary: #00bcd4; /* Cyan */
+            --color-secondary: #ff9800; /* Orange */
+            --color-win: #4caf50; /* Green */
+            --color-cell-bg: #2c2c43;
+            --color-hover: #3a3a5e;
+            --border-radius: 12px;
+            --shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+            --view-width: 500px;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--color-bg);
+            color: var(--color-text);
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            background-color: #24243e;
+            padding: 30px;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            width: 100%;
+            max-width: var(--view-width);
+            text-align: center;
+            transition: max-width 0.3s;
+        }
+        h1 { color: var(--color-primary); margin-bottom: 20px; }
+        .view { display: none; padding: 10px; }
+        .view.active { display: block; }
+        .view-title { color: var(--color-secondary); margin-top: 0; }
+        input, select, textarea { width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #3a3a5e; border-radius: 4px; background-color: var(--color-cell-bg); color: var(--color-text); box-sizing: border-box; }
+        button { background-color: var(--color-primary); color: var(--color-bg); border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; font-size: 1em; font-weight: 600; transition: background-color 0.2s; }
+        button:hover:not(:disabled) { background-color: #00a0b8; }
+        button:disabled { opacity: 0.5; }
+        .profile-card { background-color: var(--color-cell-bg); padding: 15px; border-radius: var(--border-radius); margin-bottom: 20px; }
+        .avatar { width: 50px; height: 50px; border-radius: 50%; background-color: gray; display: inline-block; vertical-align: middle; margin-right: 10px; }
+        .profile-info { display: inline-block; text-align: left; }
+        .profile-info small { color: var(--color-secondary); }
+        #active-rooms { list-style: none; padding: 0; max-height: 150px; overflow-y: auto; border: 1px solid #3a3a5e; border-radius: 4px; margin-bottom: 15px; }
+        #active-rooms li { padding: 10px; border-bottom: 1px solid #3a3a5e; display: flex; justify-content: space-between; align-items: center; }
+        #active-rooms li:last-child { border-bottom: none; }
+        #lobby-controls { display: flex; gap: 10px; justify-content: space-between; flex-wrap: wrap; }
+        #room-code-input { flex-grow: 1; margin-bottom: 0; }
+        .game-header { display: flex; justify-content: space-around; margin-bottom: 20px; }
+        .player-status { padding: 10px; border-radius: 8px; background-color: #3a3a5e; }
+        .player-status.active-player { border: 2px solid var(--color-primary); }
+        #board, #ai-board { display: grid; margin: 20px auto; border-radius: 8px; overflow: hidden; box-shadow: 0 0 10px rgba(0, 0, 0, 0.5); background-color: #1a1a2e; }
+        .board-3x3 { grid-template-columns: repeat(3, 1fr); width: 300px; height: 300px; }
+        .board-4x4 { grid-template-columns: repeat(4, 1fr); width: 400px; height: 400px; }
+        .board-5x5 { grid-template-columns: repeat(5, 1fr); width: 500px; height: 500px; }
+        .cell { background-color: var(--color-cell-bg); display: flex; justify-content: center; align-items: center; font-size: 3em; cursor: pointer; border: 2px solid #3a3a5e; transition: background-color 0.1s, transform 0.1s, color 0.3s; user-select: none; aspect-ratio: 1 / 1; }
+        .cell:hover:not(.x):not(.o) { background-color: var(--color-hover); }
+        .cell.x { color: var(--color-primary); font-weight: bold; }
+        .cell.o { color: var(--color-secondary); font-weight: bold; }
+        .cell.win { background-color: var(--color-win); color: var(--color-text); }
+        #game-controls, #ai-controls { display: flex; justify-content: center; gap: 10px; margin-top: 20px; }
+        .chat-container { margin-top: 20px; border: 1px solid #3a3a5e; border-radius: 8px; padding: 10px; background-color: #1a1a2e; }
+        .chat-messages { height: 150px; overflow-y: auto; margin-bottom: 10px; text-align: left; }
+        .chat-messages p { margin: 2px 0; }
+        .chat-input-group { display: flex; gap: 5px; }
+        .chat-input-group input { margin-bottom: 0; }
+        .chat-typing-indicator { font-size: 0.8em; color: gray; text-align: left; min-height: 15px; }
+        @media (max-width: 600px) {
+            .container { padding: 20px; max-width: 100%; }
+            .board-3x3 { width: 90vw; height: 90vw; max-width: 300px; max-height: 300px; }
+            .board-4x4 { width: 90vw; height: 90vw; max-width: 400px; max-height: 400px; }
+            .board-5x5 { width: 90vw; height: 90vw; max-width: 500px; max-height: 500px; }
+            .cell { font-size: 2em; }
+            #game-controls { flex-wrap: wrap; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Tic Tac Toe Advanced</h1>
+        <section id="login-view" class="view active">
+            <h2 class="view-title">Login / Register</h2>
+            <form id="login-form">
+                <input type="text" id="login-name" placeholder="Name (Required)" required>
+                <input type="text" id="login-address" placeholder="Address">
+                <input type="text" id="login-skills" placeholder="Skills (e.g., JS, Python)">
+                <input type="text" id="login-languages" placeholder="Languages Known">
+                <select id="login-icon">
+                    <option value="https://via.placeholder.com/50/00bcd4/ffffff?text=U1">User Icon 1</option>
+                    <option value="https://via.placeholder.com/50/ff9800/ffffff?text=U2">User Icon 2</option>
+                    <option value="https://via.placeholder.com/50/4caf50/ffffff?text=U3">User Icon 3</option>
+                </select>
+                <button type="submit">Sign In / Create Profile</button>
+            </form>
+        </section>
+        
+        <section id="lobby-view" class="view">
+            <h2 class="view-title">Lobby</h2>
+            <div id="lobby-profile" class="profile-card"></div>
+            <h3>Active Rooms</h3>
+            <ul id="active-rooms"><li>Connecting to server...</li></ul>
+            <div id="lobby-controls">
+                <select id="room-size-select"><option value="3">3x3</option><option value="4">4x4</option><option value="5">5x5</option></select>
+                <button onclick="handleCreateRoom()">Create Room</button>
+                <input type="text" id="room-code-input" placeholder="Enter Code">
+                <button onclick="handleJoinRoom()">Join Room</button>
+                <button onclick="switchToView('ai-settings-view')">Play AI Offline</button>
+            </div>
+            <div class="chat-container">
+                <h4>Lobby Chat</h4>
+                <div id="lobby-chat-messages" class="chat-messages"></div>
+                <div class="chat-typing-indicator" id="lobby-typing-indicator"></div>
+                <div class="chat-input-group">
+                    <input type="text" id="lobby-chat-input" placeholder="Say something..." oninput="sendTypingIndicator('lobby')">
+                    <button onclick="sendChatMessage('lobby')">Send</button>
+                </div>
+            </div>
+        </section>
+
+        <section id="game-view" class="view">
+            <h2 class="view-title" id="room-header">Room Code: -</h2>
+            <div class="game-header">
+                <div id="player-status-x" class="player-status active-player">X: Waiting...</div>
+                <div id="player-status-o" class="player-status">O: Waiting...</div>
+            </div>
+            <div id="status">Waiting for opponent...</div>
+            <div id="board" class="board-3x3"></div>
+            <div id="game-controls">
+                <button id="undo-btn" disabled>↩️ Undo</button>
+                <button id="hint-btn" disabled>💡 Hint</button>
+                <button onclick="handleLeaveRoom()">🚪 Leave Room</button>
+            </div>
+            <div class="chat-container">
+                <h4>In-Game Chat</h4>
+                <div id="game-chat-messages" class="chat-messages"></div>
+                <div class="chat-typing-indicator" id="game-typing-indicator"></div>
+                <div class="chat-input-group">
+                    <input type="text" id="game-chat-input" placeholder="Chat with opponent..." oninput="sendTypingIndicator('game')">
+                    <button onclick="sendChatMessage('game')">Send</button>
+                </div>
+            </div>
+        </section>
+
+        <section id="ai-settings-view" class="view">
+            <h2 class="view-title">Offline AI Mode</h2>
+            <div id="ai-settings">
+                <label for="ai-board-size">Board Size:</label>
+                <select id="ai-board-size"><option value="3">3x3</option><option value="4">4x4</option><option value="5">5x5</option></select>
+                <label for="ai-difficulty">Difficulty (MCTS Rollouts):</label>
+                <select id="ai-difficulty"><option value="500">Easy (500)</option><option value="2000" selected>Medium (2000)</option><option value="10000">Hard (10000)</option></select>
+                <button onclick="startAiGame()">Start AI Game</button>
+                <button onclick="switchToView('lobby-view')" style="margin-top: 10px;">Back to Lobby</button>
+            </div>
+            <hr style="border-color: #3a3a5e; margin: 20px 0;">
+            <div id="ai-status">Ready to play against AI.</div>
+            <div id="ai-board" class="board-3x3"></div>
+            <div id="ai-controls">
+                <button id="ai-undo-btn" disabled>↩️ Undo</button>
+                <button id="ai-hint-btn" disabled>💡 Hint</button>
+            </div>
+        </section>
+
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
